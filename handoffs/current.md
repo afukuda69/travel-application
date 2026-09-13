@@ -30,10 +30,10 @@
   app and the CORS-allowed origin matches the port Vite actually picked
   (5174, since 5173 was occupied by an unrelated local process on this
   machine).
-- Not done: no automated test suite exists yet (no pytest/vitest), and the
-  UI wasn't checked in an actual browser (no browser/screenshot tool
-  available in this session) — only via `curl`, `npm run build`, and
-  reading the rendered dev-server HTML shell.
+- Manually tested in the browser: a successful hotel search and a
+  no-match search both worked as expected (results table renders
+  correctly; "No results found." shows on zero matches).
+- Not done: no automated test suite exists yet (no pytest/vitest).
 
 ## Next task — Part 2: SQLite CRUD
 
