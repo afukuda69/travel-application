@@ -186,7 +186,7 @@ onMounted(() => {
 
     <p v-if="error" class="error">{{ error }}</p>
 
-    <section v-if="hasSearched" class="card">
+    <section v-if="hasSearched" class="card card-results">
       <h2>Search Results</h2>
 
       <div v-if="results.length > 0" class="table-scroll">
@@ -205,11 +205,11 @@ onMounted(() => {
           <tbody>
             <tr v-for="row in results" :key="`${row.hotel_id}-${row.trip_id}`">
               <td>{{ row.hotel_name }}</td>
-              <td>{{ row.city }}</td>
+              <td><span class="pill pill-city">{{ row.city }}</span></td>
               <td>{{ row.trip_name }}</td>
               <td>{{ row.check_in }}</td>
               <td>{{ row.check_out }}</td>
-              <td>{{ row.nightly_rate_usd }}</td>
+              <td><span class="pill pill-rate">{{ row.nightly_rate_usd }}</span></td>
               <td>
                 <button
                   type="button"
@@ -228,7 +228,7 @@ onMounted(() => {
       <p v-else class="empty-state">No results found.</p>
     </section>
 
-    <section class="card">
+    <section class="card card-bookings">
       <h2>My Bookings</h2>
 
       <p v-if="bookingsError" class="error">{{ bookingsError }}</p>
@@ -290,6 +290,14 @@ onMounted(() => {
   --color-primary-dark: #0f766e;
   --color-primary-wash: #ecfdf5;
   --color-primary-border: #99f6e4;
+  --color-accent: #d97706;
+  --color-accent-dark: #b45309;
+  --color-accent-wash: #fffbeb;
+  --color-accent-border: #fde68a;
+  --color-info: #2563eb;
+  --color-info-dark: #1d4ed8;
+  --color-info-wash: #eff6ff;
+  --color-info-border: #bfdbfe;
   --color-text: #1e293b;
   --color-muted: #64748b;
   --color-border: #e2e8f0;
@@ -322,9 +330,28 @@ onMounted(() => {
 .card {
   background: #fff;
   border-radius: 16px;
+  border-left: 4px solid transparent;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 10px 24px rgba(15, 23, 42, 0.06);
   padding: 1.75rem 2rem;
   margin-bottom: 1.75rem;
+}
+
+.search-card {
+  border-left-color: var(--color-primary);
+  background: linear-gradient(180deg, rgba(13, 148, 136, 0.05), #fff 170px);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 16px 32px rgba(13, 148, 136, 0.12);
+}
+
+.card-results {
+  border-left-color: var(--color-info);
+  background: linear-gradient(180deg, rgba(37, 99, 235, 0.04), #fff 170px);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 16px 32px rgba(37, 99, 235, 0.1);
+}
+
+.card-bookings {
+  border-left-color: var(--color-accent);
+  background: linear-gradient(180deg, rgba(217, 119, 6, 0.04), #fff 170px);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 16px 32px rgba(217, 119, 6, 0.1);
 }
 
 .card h2 {
@@ -375,6 +402,12 @@ onMounted(() => {
   border: 1px solid var(--color-border);
   border-radius: 12px;
   padding: 0.55rem 1rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.field:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.12);
 }
 
 .field-icon {
@@ -423,10 +456,13 @@ onMounted(() => {
   cursor: pointer;
   white-space: nowrap;
   box-shadow: 0 6px 14px rgba(13, 148, 136, 0.25);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
 .btn-primary:hover:not(:disabled) {
-  filter: brightness(0.95);
+  background: var(--color-primary-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(13, 148, 136, 0.32);
 }
 
 .btn-primary:disabled {
@@ -479,6 +515,14 @@ onMounted(() => {
   background: var(--color-row-hover);
 }
 
+.card-results .results-table tbody tr:hover {
+  background: rgba(37, 99, 235, 0.045);
+}
+
+.card-bookings .results-table tbody tr:hover {
+  background: rgba(217, 119, 6, 0.045);
+}
+
 .btn-pill {
   border-radius: 999px;
   padding: 0.4rem 1rem;
@@ -486,6 +530,8 @@ onMounted(() => {
   font-weight: 600;
   cursor: pointer;
   border: 1px solid transparent;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease,
+    border-color 0.15s ease, color 0.15s ease;
 }
 
 .btn-pill.primary {
@@ -494,10 +540,24 @@ onMounted(() => {
   border-color: var(--color-primary);
 }
 
+.btn-pill.primary:hover:not(:disabled) {
+  background: var(--color-primary-dark);
+  border-color: var(--color-primary-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(13, 148, 136, 0.3);
+}
+
 .btn-pill.outline {
   background: #fff;
   color: var(--color-primary-dark);
   border-color: var(--color-primary-border);
+}
+
+.btn-pill.outline:hover:not(:disabled) {
+  background: var(--color-primary-wash);
+  border-color: var(--color-primary);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(13, 148, 136, 0.16);
 }
 
 .btn-pill.danger {
@@ -508,11 +568,16 @@ onMounted(() => {
 
 .btn-pill.danger:hover:not(:disabled) {
   background: #fef2f2;
+  border-color: #fca5a5;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(185, 28, 28, 0.14);
 }
 
 .btn-pill:disabled {
   opacity: 0.5;
   cursor: default;
+  transform: none;
+  box-shadow: none;
 }
 
 .booking-actions {
@@ -537,6 +602,24 @@ onMounted(() => {
 .badge-cancelled {
   background: #f1f5f9;
   color: #64748b;
+}
+
+.pill {
+  display: inline-flex;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.pill-city {
+  background: var(--color-info-wash);
+  color: var(--color-info-dark);
+}
+
+.pill-rate {
+  background: var(--color-accent-wash);
+  color: var(--color-accent-dark);
 }
 
 .empty-state {
@@ -565,10 +648,14 @@ onMounted(() => {
 </style>
 
 <style>
-html,
+html {
+  height: 100%;
+}
+
 body {
   margin: 0;
-  background: #f5f7fa;
+  min-height: 100%;
+  background: linear-gradient(160deg, #eaf3ff 0%, #f7f8fc 42%, #fdf6ec 100%);
 }
 
 * {
