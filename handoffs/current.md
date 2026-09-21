@@ -1,54 +1,78 @@
-# Handoff — 2026-09-11
+# Handoff — 2026-09-21
 
 ## What works
 
-- **Backend** (`backend/main.py`): FastAPI app loads `hotels.csv` and
-  `trips.csv` on startup, joins them by `hotel_id`, and exposes
-  `GET /search?hotel_name=` with case-insensitive partial matching.
-  Returns `[]` when nothing matches. CORS is enabled for local Vite dev
-  origins (5173, 5174, 8080, 3000).
-- **Frontend** (`frontend/src/App.vue`): Vue 3 SPA with a text input,
-  Search button, and results table (`hotel_name`, `city`, `trip_name`,
-  `check_in`, `check_out`, `nightly_rate_usd`). Shows "No results found."
-  on an empty result set, and a distinct message if the API can't be
-  reached.
+- **Backend**, MVC-structured (`backend/models.py`, `controller.py`,
+  `main.py`), SQLite-backed (`backend/travel.db`, auto-created and
+  idempotently seeded from `hotels.csv`/`trips.csv` + three demo
+  travelers on first run — restarts don't duplicate seed data or affect
+  existing bookings):
+  - `GET /search?hotel_name=` — case-insensitive partial match, same
+    behavior as the original CSV version, now backed by a SQL `JOIN`
+    with `%`/`_` escaped in the query so those characters can't act as
+    unintended SQL wildcards.
+  - `GET /users` — the three seeded demo travelers.
+  - `GET /bookings`, `POST /bookings` (`{trip_id, user_id}`),
+    `PATCH /bookings/{id}/cancel`, `DELETE /bookings/{id}` — full
+    booking lifecycle. All correctly 404 on unknown trip/user/booking
+    IDs via domain exceptions (`TripNotFoundError` etc.) raised in
+    `controller.py` and translated to `HTTPException` in `main.py`.
+- **Frontend** (`frontend/src/App.vue`), redesigned as a card-based
+  layout (loosely modeled on Priceline's search-bar layout/spacing per
+  request, with an original color palette and hand-drawn icons — no
+  Priceline branding, colors, or copy):
+  - Search card: hotel-name field + a "Booking As" traveler dropdown
+    (populated from `GET /users`, defaults to the first traveler).
+  - Search Results card: same columns as before, plus a Book button per
+    row that posts to `/bookings` using the selected traveler.
+  - My Bookings card: hotel/trip/dates/traveler/status (colored badge)
+    plus Cancel and Delete actions per row, each with its own in-flight
+    disabled state.
 
 ## What was checked
 
-- Backend started under `uvicorn` and hit directly with `curl`:
-  - Partial, case-insensitive match (`harbor`, `INN`) returns the correct
-    joined records.
-  - No-match query and empty query both return `[]` / full data as
-    expected without erroring.
-  - Fixed a `KeyError: 'hotel_id'` caused by a UTF-8 BOM in both CSV
-    files — loader now reads with `encoding="utf-8-sig"`.
-  - CORS preflight (`OPTIONS`) from `http://localhost:5173` and
-    `http://localhost:5174` both return the correct
-    `access-control-allow-origin` header.
-- Frontend: `npm install` and `npm run build` both succeed. Ran `npm run
-  dev` against the live backend and confirmed the dev server serves the
-  app and the CORS-allowed origin matches the port Vite actually picked
-  (5174, since 5173 was occupied by an unrelated local process on this
-  machine).
-- Manually tested in the browser: a successful hotel search and a
-  no-match search both worked as expected (results table renders
-  correctly; "No results found." shows on zero matches).
-- Not done: no automated test suite exists yet (no pytest/vitest).
+- **Backend CRUD**, via `curl`: full lifecycle (search → create booking
+  → list → cancel → delete → 404 on re-delete), 404s on booking with an
+  unknown `trip_id` or `user_id`, and a server restart confirmed
+  bookings persist and hotels/trips/users are not re-seeded (row counts
+  unchanged).
+- **Frontend**, both `npm run build` (succeeds) and a real headless
+  Chromium run (Playwright, driven via a throwaway script — not part of
+  the repo) against the live dev server + backend: searched "harbor",
+  picked "Demo Traveler 2" from the dropdown, booked a result, confirmed
+  it appeared in My Bookings correctly attributed to that traveler,
+  cancelled it (status badge and disabled Cancel button both updated),
+  deleted it (row disappeared). No browser console errors at any step.
+  Screenshots were reviewed, not just DOM assertions.
+- Caught and fixed one real bug during that browser pass: the 7-column
+  results/bookings tables were wide enough to clip the rightmost action
+  button off the card. Fixed by widening the card and letting cell text
+  wrap instead of forcing `nowrap`.
+- Not done: no automated test suite exists yet (no pytest, no
+  vitest/Playwright wired into the repo — the Playwright check above was
+  a one-off verification script, not a committed test).
 
-## Next task — Part 2: SQLite CRUD
+## Known limitations (intentional, not oversights)
 
-Replace the CSV-backed, read-only data layer with a SQLite database and a
-full CRUD API:
+- No authentication. "Booking As" selects from three fixed demo
+  travelers seeded at startup — there's no login, no way to add a
+  traveler from the UI, and no per-user data isolation (anyone can see
+  and cancel/delete anyone's booking).
+- Hotels and trips are read-only reference data — there's no create/
+  edit/delete UI or endpoint for them, only for bookings.
+- No pagination or sorting on search results or the bookings list.
 
-- Design tables for `hotels` and `trips` (mirroring the current CSV
-  columns) and a migration/seed step that loads the existing CSVs once.
-- Add `POST`/`PUT`/`DELETE` endpoints (in addition to the existing
-  `GET /search`) for both hotels and trips.
-- Decide whether `combined_records` stays a startup-computed in-memory
-  join or becomes a live SQL join per request now that data can change
-  after startup — the latter is probably correct once writes exist.
-- Update the frontend if/when write operations need UI (out of scope
-  until asked for).
-- Add a minimal test suite (pytest for the backend at least) — none
-  exists yet and this is a good point to start one, since CRUD
-  correctness is harder to eyeball via `curl` than a read-only search.
+## Possible next steps
+
+No specific next part has been scoped yet. Candidates, roughly in order
+of likely value:
+
+- An automated test suite (pytest against `controller.py`'s functions
+  directly, since they're already HTTP-framework-agnostic; a frontend
+  test runner for `App.vue`).
+- Real authentication, if the demo-traveler dropdown stops being
+  sufficient — would touch `models.py` (a real `users` identity model),
+  `controller.py` (scoping `list_bookings`/`cancel`/`delete` to the
+  caller), and the frontend (replacing the dropdown with a login flow).
+- Hotel/trip management (CRUD), if the app needs to support more than
+  the seeded CSV data.

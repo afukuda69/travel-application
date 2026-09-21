@@ -1,0 +1,10 @@
+.DS_Store
+
+# backend
+backend/.venv/
+backend/__pycache__/
+backend/travel.db
+
+# frontend
+frontend/node_modules/
+frontend/dist/

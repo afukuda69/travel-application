@@ -1,10 +1,9 @@
-import csv
-from pathlib import Path
-
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
-BASE_DIR = Path(__file__).resolve().parent
+import controller
+from models import init_db
 
 app = FastAPI(title="Travel Application API")
 
@@ -13,10 +12,12 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://localhost:5174",
+        "http://localhost:5175",
         "http://localhost:8080",
         "http://localhost:3000",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:5174",
+        "http://127.0.0.1:5175",
         "http://127.0.0.1:8080",
         "http://127.0.0.1:3000",
     ],
@@ -25,36 +26,54 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-combined_records = []
-
-
-def load_records():
-    hotels_by_id = {}
-    with open(BASE_DIR / "hotels.csv", newline="", encoding="utf-8-sig") as f:
-        for row in csv.DictReader(f):
-            hotels_by_id[row["hotel_id"]] = row
-
-    records = []
-    with open(BASE_DIR / "trips.csv", newline="", encoding="utf-8-sig") as f:
-        for trip in csv.DictReader(f):
-            hotel = hotels_by_id.get(trip["hotel_id"], {})
-            records.append({**hotel, **trip})
-    return records
-
 
 @app.on_event("startup")
 def on_startup():
-    global combined_records
-    combined_records = load_records()
+    init_db()
+
+
+class BookingCreate(BaseModel):
+    trip_id: str
+    user_id: int
 
 
 @app.get("/search")
 def search(hotel_name: str = ""):
-    query = hotel_name.strip().lower()
-    if not query:
-        return combined_records
-    return [
-        record
-        for record in combined_records
-        if query in record.get("hotel_name", "").lower()
-    ]
+    return controller.search_hotel_trips(hotel_name)
+
+
+@app.get("/users")
+def get_users():
+    return controller.list_users()
+
+
+@app.get("/bookings")
+def get_bookings():
+    return controller.list_bookings()
+
+
+@app.post("/bookings", status_code=201)
+def create_booking(payload: BookingCreate):
+    try:
+        return controller.create_booking(payload.trip_id, payload.user_id)
+    except controller.TripNotFoundError:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    except controller.UserNotFoundError:
+        raise HTTPException(status_code=404, detail="User not found")
+
+
+@app.patch("/bookings/{booking_id}/cancel")
+def cancel_booking(booking_id: int):
+    try:
+        return controller.cancel_booking(booking_id)
+    except controller.BookingNotFoundError:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+
+@app.delete("/bookings/{booking_id}", status_code=204)
+def delete_booking(booking_id: int):
+    try:
+        controller.delete_booking(booking_id)
+    except controller.BookingNotFoundError:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return Response(status_code=204)
