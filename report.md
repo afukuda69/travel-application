@@ -1,28 +1,27 @@
-# Travel Application — Part 1
+# Travel Application — Part 2
 
 ## Repository and commit
-https://github.com/afukuda69/travel-application — commit 063b7edcece48518744d48c067311897fb251e79
+https://github.com/afukuda69/travel-application — commit cfb1d6be16d0754df95cddf6a35214dca613c3cc
 
 ## Implementation
-The Vue frontend provides a text input and Search button. On submit, it calls
-the FastAPI backend's /search endpoint with the hotel name. FastAPI loads
-hotels.csv and trips.csv on startup, joins them by hotel_id, performs a
-case-insensitive partial match against hotel_name, and returns the matching
-combined records as JSON (or an empty array if none match). The frontend
-renders results in a table with Hotel Name, City, Trip Name, Check In,
-Check Out, and Nightly Rate, or shows a "No results found" message when
-there are no matches.
+The application now uses a SQLite database with an MVC architecture instead of reading directly from CSVs. `backend/models.py` defines the Hotel, Trip, User, and Booking data classes along with the SQLite schema, connection handling, and a one-time seed step that loads hotels.csv, trips.csv, users.csv, and bookings.csv into SQLite without duplicating data on restart. `backend/controller.py` contains all CRUD logic — assembling hotel/trip/booking details and raising domain-specific exceptions — with no HTTP awareness. `backend/main.py` is now a thin routing layer that calls the controller and translates its exceptions into HTTP responses. Endpoints include GET /search, GET /users, POST /bookings, GET /bookings, PATCH /bookings/{id}/cancel, and DELETE /bookings/{id}.
+
+The Vue frontend was redesigned with a card-based layout inspired by Priceline's search bar, replacing the plain input from Part 1. It now includes a "Booking As" traveler dropdown (populated from GET /users) alongside hotel search, a "Book" action on each search result that creates a booking via POST /bookings, and a "My Bookings" section that lists bookings via GET /bookings with Cancel (PATCH) and Delete (DELETE) actions per row. All CRUD actions are performed through the frontend as required.
 
 ## Verification
-- Action: Searched "Harbor Lantern Hotel" — Expected: table shows matching
-  hotel and trip rows — Observed: matched expected result, two trips returned
-  (Boston Harbor Weekend, Boston Autumn Weekend), both $150/night.
-- Action: Searched "zzz" — Expected: "No results found" message displayed —
-  Observed: matched expected result.
+- Action: Searched "Valley Trail Inn" — Expected: matching hotel and trip rows displayed — Observed: matched expected result.
+- Action: Selected a traveler and clicked Book on a result — Expected: booking created and visible in My Bookings — Observed: matched expected result.
+- Action: Clicked Cancel on a booking — Expected: status changes to "cancelled" while the record remains visible — Observed: matched expected result.
+- Action: Created a test booking and clicked Delete — Expected: booking removed from My Bookings — Observed: matched expected result.
+- Action: Stopped and restarted both backend and frontend servers, then refreshed the browser — Expected: all bookings persist exactly as left, with no duplication of seeded starter records — Observed: matched expected result.
 
 Screenshots:
-- https://github.com/afukuda69/travel-application/blob/main/docs/screenshots/search-success.png
-- https://github.com/afukuda69/travel-application/blob/main/docs/screenshots/search-no-results.png
+- https://github.com/afukuda69/travel-application/blob/main/docs/screenshots/home-page.png
+- https://github.com/afukuda69/travel-application/blob/main/docs/screenshots/search_Valley-Trail-Inn.png
+- https://github.com/afukuda69/travel-application/blob/main/docs/screenshots/booked_Valley-Trail-Inn.png
+- https://github.com/afukuda69/travel-application/blob/main/docs/screenshots/cancelled_Valley-Trail-Inn.png
+
+Demo video (under 3 minutes): https://github.com/afukuda69/travel-application/blob/main/docs/demo/Hotel-Booking_Demo.mov
 
 ## Project context and next steps
 - README: https://github.com/afukuda69/travel-application/blob/main/README.md
@@ -31,6 +30,4 @@ Screenshots:
 - Prompts: https://github.com/afukuda69/travel-application/tree/main/prompts
 - Handoff: https://github.com/afukuda69/travel-application/blob/main/handoffs/current.md
 
-Known limitations: search matches by hotel name only, not city. Next task:
-Part 2 — seed SQLite with the supplied data and implement full CRUD
-(create, read, update/cancel, delete) for bookings through the frontend.
+Known limitations: no authentication is implemented — travelers are selected from a dropdown of seeded demo users rather than logged in; hotel and trip records cannot be created or edited through the app, only bookings; no automated test suite. 
