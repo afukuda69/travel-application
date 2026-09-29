@@ -26,8 +26,27 @@ creates `backend/travel.db` (SQLite, gitignored) and seeds it from
 idempotent, so restarting the server never duplicates data or wipes
 existing bookings.
 
+### Environment variables
+
+Secrets live in a single `.env` file at the **project root** (beside
+`frontend/` and `backend/`, i.e. `/.env`, not `backend/.env`) — see
+`backend/config.py`, which loads it from that fixed path. Currently it
+holds one setting:
+
+```
+GEOAPIFY_API_KEY=
+```
+
+**The backend only reads `.env` once, at process startup** — if you add
+or change a value in `.env`, you must restart the backend
+(`uvicorn main:app ...`) for the change to take effect. `GET /api/health`
+reports whether the key is configured, without ever exposing its value.
+
 Endpoints:
 
+- `GET /api/health` — basic health check; also reports
+  `"geoapify_api_key": "configured"` or `"not configured"` (never the
+  key itself).
 - `GET /search?hotel_name=<query>` — case-insensitive partial match on
   hotel name, returns combined hotel + trip records as JSON (`[]` if
   nothing matches).

@@ -8,3 +8,8 @@ backend/travel.db
 # frontend
 frontend/node_modules/
 frontend/dist/
+
+# environment (secrets)
+.env
+.env.*
+!.env.example

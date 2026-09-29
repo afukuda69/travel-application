@@ -1,5 +1,6 @@
 <script setup>
 import { onMounted, ref } from 'vue'
+import NearbyHotels from './components/NearbyHotels.vue'
 
 const API_BASE = 'http://127.0.0.1:8123'
 
@@ -281,6 +282,8 @@ onMounted(() => {
 
       <p v-else-if="!bookingsError" class="empty-state">No bookings yet.</p>
     </section>
+
+    <NearbyHotels />
   </main>
 </template>
 
@@ -625,6 +628,12 @@ onMounted(() => {
 .empty-state {
   color: var(--color-muted);
   padding: 0.25rem 0;
+}
+
+.loading-text {
+  color: var(--color-muted);
+  padding: 0.25rem 0;
+  margin-top: 1rem;
 }
 
 @media (max-width: 640px) {
