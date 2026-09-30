@@ -1,15 +1,24 @@
-.DS_Store
+# Dependencies / builds
+node_modules/
+dist/
+build/
 
-# backend
-backend/.venv/
-backend/__pycache__/
-backend/travel.db
+# Python caches
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
 
-# frontend
-frontend/node_modules/
-frontend/dist/
+# Frontend caches
+.vite/
+.cache/
 
-# environment (secrets)
+# Env / OS
 .env
 .env.*
 !.env.example
+.DS_Store
+
+# App data
+backend/travel.db
