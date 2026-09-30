@@ -36,6 +36,16 @@ function formatDistance(meters) {
   return `${Math.round(meters)} m away`
 }
 
+function markerIcon(kind) {
+  return L.divIcon({
+    className: `map-marker map-marker-${kind}`,
+    html: '<span class="map-marker-dot"></span>',
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+    popupAnchor: [0, -10],
+  })
+}
+
 function clearMapMarkers() {
   hotelMarkers.forEach((marker) => marker.remove())
   hotelMarkers.clear()
@@ -54,6 +64,15 @@ function ensureMap() {
   }).addTo(map)
 }
 
+function updateMarkerSelection() {
+  hotelMarkers.forEach((marker, placeId) => {
+    const el = marker.getElement()
+    if (el) {
+      el.classList.toggle('marker-selected', placeId === selectedPlaceId.value)
+    }
+  })
+}
+
 function renderMap() {
   ensureMap()
   map.invalidateSize()
@@ -63,6 +82,7 @@ function renderMap() {
 
   centerMarker = L.marker([location.value.latitude, location.value.longitude], {
     title: 'Search center',
+    icon: markerIcon('center'),
   }).addTo(map)
   centerMarker.bindPopup(
     `ZIP ${location.value.postcode}${location.value.locality ? ` — ${location.value.locality}` : ''}`
@@ -70,7 +90,7 @@ function renderMap() {
   bounds.push([location.value.latitude, location.value.longitude])
 
   hotels.value.forEach((hotel) => {
-    const marker = L.marker([hotel.latitude, hotel.longitude]).addTo(map)
+    const marker = L.marker([hotel.latitude, hotel.longitude], { icon: markerIcon('hotel') }).addTo(map)
     marker.bindPopup(hotel.name || 'Unnamed hotel')
     marker.on('click', () => selectFromMarker(hotel.place_id))
     hotelMarkers.set(hotel.place_id, marker)
@@ -78,10 +98,12 @@ function renderMap() {
   })
 
   map.fitBounds(bounds, { padding: [32, 32], maxZoom: 15 })
+  updateMarkerSelection()
 }
 
 function selectFromList(placeId) {
   selectedPlaceId.value = placeId
+  updateMarkerSelection()
   const marker = hotelMarkers.get(placeId)
   if (marker && map) {
     marker.openPopup()
@@ -91,6 +113,7 @@ function selectFromList(placeId) {
 
 async function selectFromMarker(placeId) {
   selectedPlaceId.value = placeId
+  updateMarkerSelection()
   await nextTick()
   const el = listItemEls.get(placeId)
   if (el) {
@@ -162,47 +185,68 @@ onBeforeUnmount(() => {
   <section class="card">
     <h2>Nearby Hotels</h2>
 
-    <form class="zip-form" @submit.prevent="searchHotels">
-      <div class="field field-zip">
-        <span class="field-icon">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path
-              d="M12 21s-7-6.5-7-11a7 7 0 0 1 14 0c0 4.5-7 11-7 11Z"
-              stroke-linecap="round"
-              stroke-linejoin="round"
+    <div class="zip-row">
+      <form class="zip-form" @submit.prevent="searchHotels">
+        <div class="field field-zip">
+          <span class="field-icon">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path
+                d="M12 21s-7-6.5-7-11a7 7 0 0 1 14 0c0 4.5-7 11-7 11Z"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <circle cx="12" cy="10" r="2.5" />
+            </svg>
+          </span>
+          <div class="field-body">
+            <label for="zip-input">ZIP code</label>
+            <input
+              id="zip-input"
+              v-model="zipInput"
+              type="text"
+              inputmode="numeric"
+              maxlength="5"
+              autocomplete="off"
+              placeholder="e.g. 16802"
             />
-            <circle cx="12" cy="10" r="2.5" />
-          </svg>
-        </span>
-        <div class="field-body">
-          <label for="zip-input">ZIP code</label>
-          <input
-            id="zip-input"
-            v-model="zipInput"
-            type="text"
-            inputmode="numeric"
-            maxlength="5"
-            autocomplete="off"
-            placeholder="e.g. 16802"
-          />
+          </div>
         </div>
-      </div>
 
-      <button type="submit" class="btn-primary" :disabled="loading">
-        {{ loading ? 'Searching…' : 'Search hotels' }}
-      </button>
-    </form>
+        <button type="submit" class="btn-primary" :disabled="loading">
+          {{ loading ? 'Searching…' : 'Search hotels' }}
+        </button>
+      </form>
 
-    <p v-if="zipInputError" class="error status-message">{{ zipInputError }}</p>
-    <p v-else-if="loading" class="loading-text">Loading…</p>
-    <p v-else-if="statusError" class="error status-message">{{ statusError }}</p>
-
-    <p v-else-if="location" class="search-summary">
-      Showing hotels within {{ radiusM / 1000 }} km of
-      <strong>{{ location.postcode }}</strong>
-      <span v-if="location.locality">&nbsp;({{ location.locality }})</span>
-      — {{ hotels.length }} found.
-    </p>
+      <p v-if="zipInputError" class="status-message status-error">
+        <svg class="status-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 3l10 18H2L12 3z" stroke-linejoin="round" />
+          <line x1="12" y1="9" x2="12" y2="14" />
+          <circle cx="12" cy="17.3" r="0.9" fill="currentColor" stroke="none" />
+        </svg>
+        {{ zipInputError }}
+      </p>
+      <p v-else-if="loading" class="status-message status-loading">
+        <svg class="status-icon spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="9" stroke-opacity="0.3" />
+          <path d="M21 12a9 9 0 0 0-9-9" stroke-linecap="round" />
+        </svg>
+        Loading…
+      </p>
+      <p v-else-if="statusError" class="status-message status-error">
+        <svg class="status-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 3l10 18H2L12 3z" stroke-linejoin="round" />
+          <line x1="12" y1="9" x2="12" y2="14" />
+          <circle cx="12" cy="17.3" r="0.9" fill="currentColor" stroke="none" />
+        </svg>
+        {{ statusError }}
+      </p>
+      <p v-else-if="location" class="status-message status-summary">
+        Within {{ radiusM / 1000 }} km of
+        <strong>{{ location.postcode }}</strong>
+        <span v-if="location.locality">&nbsp;({{ location.locality }})</span>
+        — {{ hotels.length }} found.
+      </p>
+    </div>
 
     <!--
       This stays mounted (v-show, not v-if) so the map container element
@@ -212,7 +256,14 @@ onBeforeUnmount(() => {
     -->
     <div class="nearby-layout" v-show="location">
       <div class="hotel-list-panel">
-        <p v-if="hotels.length === 0" class="empty-state">No hotels found nearby.</p>
+        <p v-if="hotels.length === 0" class="status-message status-empty">
+          <svg class="status-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="9" />
+            <line x1="12" y1="11" x2="12" y2="16" />
+            <circle cx="12" cy="7.5" r="0.9" fill="currentColor" stroke="none" />
+          </svg>
+          No hotels found nearby.
+        </p>
         <ul v-else class="hotel-list" role="list">
           <li v-for="hotel in hotels" :key="hotel.place_id">
             <button
@@ -222,11 +273,13 @@ onBeforeUnmount(() => {
               :ref="(el) => setListItemRef(hotel.place_id, el)"
               @click="selectFromList(hotel.place_id)"
             >
-              <span class="hotel-item-name">{{ hotel.name || 'Unnamed hotel' }}</span>
-              <span v-if="hotel.address" class="hotel-item-address">{{ hotel.address }}</span>
-              <span v-if="hotel.distance_m != null" class="hotel-item-distance">
-                {{ formatDistance(hotel.distance_m) }}
+              <span class="hotel-item-row1">
+                <span class="hotel-item-name">{{ hotel.name || 'Unnamed hotel' }}</span>
+                <span v-if="hotel.distance_m != null" class="hotel-item-distance">
+                  {{ formatDistance(hotel.distance_m) }}
+                </span>
               </span>
+              <span v-if="hotel.address" class="hotel-item-address">{{ hotel.address }}</span>
             </button>
           </li>
         </ul>
@@ -243,54 +296,66 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .card {
-  background: #fff;
-  border-radius: 16px;
-  border-left: 4px solid transparent;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 10px 24px rgba(15, 23, 42, 0.06);
-  padding: 1.75rem 2rem;
-  margin-bottom: 1.75rem;
+  background: var(--bg-panel);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
 }
 
 .card h2 {
-  margin: 0 0 1.25rem;
-  font-size: 1.15rem;
-  font-weight: 700;
+  margin: 0 0 var(--space-3);
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
 .icon {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
+}
+
+.zip-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
 }
 
 .zip-form {
   display: flex;
-  gap: 1rem;
+  gap: var(--space-3);
   align-items: stretch;
+  flex-shrink: 0;
 }
 
 .field {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: var(--space-2);
   flex: 1;
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  padding: 0.55rem 1rem;
+  min-height: var(--min-target);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .field:focus-within {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.12);
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
 }
 
 .field-zip {
-  flex: 0 0 200px;
+  flex: 0 0 180px;
 }
 
 .field-icon {
-  color: var(--color-primary);
+  color: var(--text-secondary);
   display: flex;
 }
 
@@ -298,92 +363,118 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   flex: 1;
+  min-width: 0;
 }
 
 .field-body label {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--color-muted);
-  font-weight: 700;
-  margin-bottom: 0.1rem;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  font-weight: 600;
 }
 
 .field-body input {
   border: none;
   outline: none;
-  font-size: 1rem;
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 500;
   padding: 0;
-  color: var(--color-text);
+  color: var(--text-primary);
   background: transparent;
   width: 100%;
 }
 
 .btn-primary {
-  background: var(--color-primary);
-  color: #fff;
-  border: none;
-  border-radius: 12px;
-  padding: 0 1.75rem;
-  font-size: 1rem;
-  font-weight: 700;
+  background: var(--accent-button);
+  color: var(--text-primary);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  min-height: var(--min-target);
+  padding: 0 var(--space-4);
+  font-size: 0.9rem;
+  font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  box-shadow: 0 6px 14px rgba(13, 148, 136, 0.25);
-  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  transition: background 0.15s ease;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: var(--color-primary-dark);
-  transform: translateY(-1px);
-  box-shadow: 0 10px 20px rgba(13, 148, 136, 0.32);
+  background: var(--accent-button-hover);
 }
 
 .btn-primary:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: default;
-  box-shadow: none;
-}
-
-.error {
-  color: #b91c1c;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  padding: 0.75rem 1rem;
-  border-radius: 10px;
-  font-size: 0.9rem;
 }
 
 .status-message {
-  margin-top: 1rem;
-  margin-bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius);
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 500;
+  flex: 1;
+  min-width: 220px;
 }
 
-.loading-text {
-  color: var(--color-muted);
-  padding: 0.25rem 0;
-  margin-top: 1rem;
+.status-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
 }
 
-.empty-state {
-  color: var(--color-muted);
-  padding: 0.25rem 0;
+.status-icon.spin {
+  animation: spin 0.9s linear infinite;
 }
 
-.search-summary {
-  margin-top: 1.25rem;
-  margin-bottom: 1rem;
-  color: var(--color-text);
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.status-error {
+  color: var(--color-danger);
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.25);
+}
+
+.status-loading {
+  color: var(--text-secondary);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+}
+
+.status-empty {
+  color: var(--text-secondary);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+}
+
+.status-summary {
+  color: var(--text-primary);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+}
+
+.status-summary strong {
+  color: var(--accent-secondary);
 }
 
 .nearby-layout {
   display: flex;
-  gap: 1.5rem;
+  gap: var(--space-4);
   align-items: stretch;
 }
 
 .hotel-list-panel {
-  flex: 1;
+  flex: 0 0 38%;
   min-width: 0;
 }
 
@@ -391,26 +482,30 @@ onBeforeUnmount(() => {
   list-style: none;
   margin: 0;
   padding: 0;
-  max-height: 420px;
+  height: clamp(360px, 70vh, 640px);
   overflow-y: auto;
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
 }
 
 .hotel-item {
   width: 100%;
+  min-height: var(--min-target);
   text-align: left;
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
-  padding: 0.75rem 1rem;
+  justify-content: center;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
   border: none;
-  border-bottom: 1px solid var(--color-border-light);
-  background: #fff;
+  border-left: 3px solid transparent;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
   cursor: pointer;
   font: inherit;
-  color: var(--color-text);
-  transition: background 0.15s ease;
+  color: var(--text-primary);
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .hotel-list li:last-child .hotel-item {
@@ -418,42 +513,163 @@ onBeforeUnmount(() => {
 }
 
 .hotel-item:hover {
-  background: var(--color-row-hover);
-}
-
-.hotel-item:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: -2px;
+  background: var(--bg-panel);
 }
 
 .hotel-item-selected {
-  background: var(--color-primary-wash);
+  background: rgba(139, 92, 246, 0.1);
+  border-left-color: var(--accent);
+}
+
+.hotel-item-row1 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
 }
 
 .hotel-item-name {
-  font-weight: 700;
+  font-weight: 600;
+  font-size: 0.92rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.hotel-item-address,
+.hotel-item-address {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .hotel-item-distance {
-  font-size: 0.85rem;
-  color: var(--color-muted);
+  font-size: 0.76rem;
+  color: var(--accent-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .hotel-map {
   flex: 1;
   min-width: 0;
-  height: 420px;
-  border-radius: 12px;
+  height: clamp(360px, 70vh, 640px);
+  border-radius: var(--radius);
   overflow: hidden;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--border);
 }
 
 .data-note {
-  margin-top: 1.25rem;
+  margin-top: var(--space-3);
   margin-bottom: 0;
-  font-size: 0.82rem;
-  color: var(--color-muted);
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+/* Darken only the raster tile layer — markers, popups, and the
+   attribution control live in separate Leaflet panes and are untouched. */
+.hotel-map :deep(.leaflet-tile-pane) {
+  filter: invert(0.88) hue-rotate(180deg) brightness(0.95) saturate(0.6) contrast(0.92);
+}
+
+.hotel-map :deep(.leaflet-container) {
+  background: var(--bg-raised);
+  font-family: var(--font-body);
+}
+
+.hotel-map :deep(.map-marker-dot) {
+  display: block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  background: var(--accent);
+}
+
+.hotel-map :deep(.map-marker-center .map-marker-dot) {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--text-primary);
+  background: transparent;
+}
+
+.hotel-map :deep(.map-marker-hotel.marker-selected .map-marker-dot) {
+  width: 15px;
+  height: 15px;
+  border: 2px solid var(--text-primary);
+  background: var(--accent);
+}
+
+.hotel-map :deep(.leaflet-popup-content-wrapper) {
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  border-radius: var(--radius);
+}
+
+.hotel-map :deep(.leaflet-popup-tip) {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+}
+
+.hotel-map :deep(.leaflet-popup-content) {
+  font-family: var(--font-body);
+  font-weight: 500;
+  margin: var(--space-2) var(--space-3);
+}
+
+.hotel-map :deep(.leaflet-popup-close-button) {
+  color: var(--text-secondary);
+}
+
+.hotel-map :deep(.leaflet-popup-close-button:hover) {
+  color: var(--text-primary);
+}
+
+.hotel-map :deep(.leaflet-control-attribution) {
+  background: rgba(11, 11, 16, 0.8);
+  color: var(--text-secondary);
+}
+
+.hotel-map :deep(.leaflet-control-attribution a) {
+  color: var(--text-primary);
+}
+
+.hotel-map :deep(.leaflet-control-zoom a) {
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+
+.hotel-map :deep(.leaflet-control-zoom a:hover) {
+  background: var(--bg-raised);
+}
+
+.hotel-map :deep(.leaflet-control-zoom a:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+@media (max-width: 900px) {
+  .nearby-layout {
+    flex-direction: column;
+  }
+
+  /* flex: 1 expands to flex-basis: 0%, which wins over an explicit
+     height on the main axis in a column flex container — that left the
+     map rendering at ~2px tall. flex: none makes both panels size from
+     their own explicit height instead. */
+  .hotel-list-panel,
+  .hotel-map {
+    flex: none;
+  }
+
+  .hotel-list,
+  .hotel-map {
+    height: 45vh;
+  }
 }
 
 @media (max-width: 640px) {
@@ -466,15 +682,11 @@ onBeforeUnmount(() => {
   }
 
   .card {
-    padding: 1.25rem;
+    padding: var(--space-3);
   }
 
-  .nearby-layout {
-    flex-direction: column;
-  }
-
-  .hotel-map {
-    height: 300px;
+  .status-message {
+    min-width: 100%;
   }
 }
 </style>

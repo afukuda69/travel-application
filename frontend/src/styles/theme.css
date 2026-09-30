@@ -1,0 +1,85 @@
+:root {
+  /* Backgrounds */
+  --bg-page: #0b0b10;
+  --bg-panel: #14131c;
+  --bg-raised: #1c1a28;
+
+  /* Text */
+  --text-primary: #ececf1;
+  --text-secondary: #a1a1b5;
+
+  /* Accent — violet is the brand identity.
+     #8b5cf6 is reserved for decorative/non-text use (borders, rings, icons,
+     marker fills) where WCAG only requires 3:1. Solid button fills and
+     small violet TEXT use the adjusted shades below instead, verified to
+     hit 4.5:1 for normal-size text — see note in the handoff/report. */
+  --accent: #8b5cf6;
+  --accent-hover: #7c3aed;
+  --accent-text: #a78bfa;
+  --accent-button: #7c3aed;
+  --accent-button-hover: #6d28d9;
+
+  /* Secondary accent */
+  --accent-secondary: #60a5fa;
+
+  /* Borders */
+  --border: #2a2838;
+  --border-strong: #38374a;
+
+  /* Status (muted/professional, always paired with an icon + label) */
+  --color-success: #4ade80;
+  --color-warning: #f5b942;
+  --color-danger: #f87171;
+
+  /* Focus */
+  --focus-ring: 0 0 0 3px rgba(139, 92, 246, 0.35);
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  /* Fonts */
+  --font-body: 'Inter', -apple-system, 'Segoe UI', sans-serif;
+
+  /* Shape */
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-lg: 10px;
+
+  --min-target: 40px;
+  --page-max-width: 1400px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100%;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  background-color: var(--bg-page);
+  background-image: radial-gradient(ellipse at top, rgba(139, 92, 246, 0.06), transparent 60%);
+  background-attachment: fixed;
+}
+
+/* Global focus visibility — a soft violet ring on every interactive
+   element, not just the ones with bespoke focus styles. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: var(--focus-ring);
+}
