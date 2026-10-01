@@ -2,7 +2,8 @@
 
 ## Project access
 - **Repository:** https://github.com/afukuda69/travel-application
-- **Assessed commit:** `<FINAL_COMMIT_HASH>`
+- **Assessed commit:** f7d760949d645c3dda32f347766d83545650dc55
+
 - **Stack:** Vue 3 + Vite frontend, FastAPI + SQLite backend (MVC), Geoapify Geocoding and Places APIs, Leaflet with OpenStreetMap tiles.
 
 ### Configuration
