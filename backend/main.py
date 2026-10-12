@@ -3,8 +3,10 @@ from dataclasses import asdict
 
 from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+import chat
 import config
 import controller
 import places_lookup
@@ -57,6 +59,10 @@ class SavedHotelCreate(BaseModel):
     locality: str | None = None
     center_latitude: float | None = Field(default=None, ge=-90, le=90)
     center_longitude: float | None = Field(default=None, ge=-180, le=180)
+
+
+class ChatRequest(BaseModel):
+    question: str = Field(min_length=1)
 
 
 @app.get("/api/health")
@@ -149,6 +155,35 @@ def delete_saved_hotel(hotel_id: str):
     except saved_hotels.HotelNotSavedError:
         raise HTTPException(status_code=404, detail="Hotel is not saved")
     return Response(status_code=204)
+
+
+def _chat_error(status_code: int, question: str, answer: str, status: str, proposed_sql: str | None = None):
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "question": question,
+            "proposed_sql": proposed_sql,
+            "rows": [],
+            "answer": answer,
+            "status": status,
+        },
+    )
+
+
+@app.post("/api/chat")
+def post_chat(payload: ChatRequest):
+    try:
+        return chat.answer_question(payload.question)
+    except chat.SQLRejectedError as exc:
+        return _chat_error(422, payload.question, f"Not allowed (read-only): {exc}", "rejected", exc.proposed_sql)
+    except chat.LLMNotConfiguredError:
+        return _chat_error(503, payload.question, "The chatbot isn't configured yet.", "error")
+    except chat.LLMRateLimitedError:
+        return _chat_error(
+            429, payload.question, "Too many requests right now. Please wait a moment and try again.", "error"
+        )
+    except chat.LLMRequestError:
+        return _chat_error(502, payload.question, "Couldn't answer. Try again.", "error")
 
 
 @app.get("/search")

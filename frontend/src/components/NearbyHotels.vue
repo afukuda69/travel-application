@@ -2,6 +2,7 @@
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import HotelChat from './HotelChat.vue'
 
 const API_BASE = 'http://127.0.0.1:8123'
 const ZIP_PATTERN = /^\d{5}$/
@@ -410,6 +411,8 @@ onBeforeUnmount(() => {
         </span>
       </p>
     </div>
+
+    <HotelChat />
 
     <p
       v-if="actionFeedback"

@@ -1,0 +1,52 @@
+{
+  "label": "chat_sample_fixture",
+  "description": "Hand-written, fixed fixture for the /api/chat golden path. All values here (seed rows, the two mocked LLM responses, and the expected final response) are fabricated for testing only — nothing here is live OpenRouter output or real saved-hotel data.",
+  "seed_data": {
+    "saved_hotels": [
+      {
+        "hotel_id": "sample-hotel-1",
+        "name": "Sample Hotel",
+        "address": "1 Sample St, Sampletown, CA",
+        "latitude": 10.0,
+        "longitude": 20.0
+      }
+    ],
+    "saved_hotel_zip_searches": [
+      {
+        "hotel_id": "sample-hotel-1",
+        "zip": "00000",
+        "locality": "Sampletown",
+        "center_latitude": 10.0,
+        "center_longitude": 20.0
+      }
+    ],
+    "demo_hotel_nights": [
+      { "hotel_id": "sample-hotel-1", "stay_date": "2026-10-10", "nightly_rate_cents": 10000, "rooms_available": 20 },
+      { "hotel_id": "sample-hotel-1", "stay_date": "2026-10-11", "nightly_rate_cents": 10000, "rooms_available": 20 }
+    ]
+  },
+  "question": "What's the cheapest stay at Sample Hotel for Oct 10-12?",
+  "mocked_sql_response": "SELECT sh.name, sh.address, n.stay_date, n.nightly_rate_cents, n.rooms_available FROM saved_hotels sh JOIN demo_hotel_nights n ON n.hotel_id = sh.hotel_id WHERE sh.hotel_id = 'sample-hotel-1' AND n.stay_date IN ('2026-10-10', '2026-10-11') LIMIT 50",
+  "mocked_answer_response": "Hotel: Sample Hotel\nLocation: 1 Sample St, Sampletown, CA\nStay dates: Oct 10 & 11, 2026 (checkout Oct 12 excluded)\nNightly rate: $100.00\nTotal cost: $200.00 for 2 nights\nAvailability: 20 rooms\nReason: only saved hotel matching your dates",
+  "expected_response": {
+    "proposed_sql": "SELECT sh.name, sh.address, n.stay_date, n.nightly_rate_cents, n.rooms_available FROM saved_hotels sh JOIN demo_hotel_nights n ON n.hotel_id = sh.hotel_id WHERE sh.hotel_id = 'sample-hotel-1' AND n.stay_date IN ('2026-10-10', '2026-10-11') LIMIT 50",
+    "rows": [
+      {
+        "name": "Sample Hotel",
+        "address": "1 Sample St, Sampletown, CA",
+        "stay_date": "2026-10-10",
+        "nightly_rate_cents": 10000,
+        "rooms_available": 20
+      },
+      {
+        "name": "Sample Hotel",
+        "address": "1 Sample St, Sampletown, CA",
+        "stay_date": "2026-10-11",
+        "nightly_rate_cents": 10000,
+        "rooms_available": 20
+      }
+    ],
+    "answer": "Hotel: Sample Hotel\nLocation: 1 Sample St, Sampletown, CA\nStay dates: Oct 10 & 11, 2026 (checkout Oct 12 excluded)\nNightly rate: $100.00\nTotal cost: $200.00 for 2 nights\nAvailability: 20 rooms\nReason: only saved hotel matching your dates",
+    "status": "answer"
+  }
+}

@@ -30,12 +30,17 @@ existing bookings.
 
 Secrets live in a single `.env` file at the **project root** (beside
 `frontend/` and `backend/`, i.e. `/.env`, not `backend/.env`) — see
-`backend/config.py`, which loads it from that fixed path. Currently it
-holds one setting:
+`backend/config.py`, which loads it from that fixed path. It holds:
 
 ```
 GEOAPIFY_API_KEY=
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=
 ```
+
+`OPENROUTER_API_KEY`/`OPENROUTER_MODEL` are read **only** on the backend
+(`backend/chat.py`) for the saved-hotels chatbot — never sent to the
+frontend and never included in any response or error message.
 
 **The backend only reads `.env` once, at process startup** — if you add
 or change a value in `.env`, you must restart the backend
@@ -60,9 +65,41 @@ Endpoints:
   `cancelled`. 404s if the booking doesn't exist.
 - `DELETE /bookings/{booking_id}` — permanently removes a booking. 404s
   if it doesn't exist.
+- `GET /api/saved-hotels/ids`, `GET /api/saved-hotels?zip=`,
+  `POST /api/saved-hotels`, `DELETE /api/saved-hotels/{hotel_id}` — the
+  local "saved hotels" feature backing the Nearby Hotels panel's Add/
+  Remove buttons and local-first ZIP lookup.
+- `POST /api/chat` — body `{"question": "..."}`. A two-stage RAG chatbot
+  over `saved_hotels`/`saved_hotel_zip_searches`/`demo_hotel_nights`
+  only: asks an LLM (via OpenRouter) for a single read-only SQL query,
+  validates it (SQLite's own query authorizer — see `backend/chat.py` —
+  rejects anything but a SELECT against those three tables, enforces a
+  row limit of 50), runs it, then asks the LLM to answer using only the
+  retrieved rows. Returns
+  `{question, proposed_sql, rows, answer, status}`, where `status` is
+  one of `answer` / `no_match` / `rejected` / `error` (HTTP 422 for a
+  rejected query, 429 for an OpenRouter rate limit, 502/503 for other
+  LLM failures).
 
-To reset all data (including bookings), stop the server and delete
-`backend/travel.db` — it will be recreated and reseeded on next startup.
+To reset all data (including bookings and saved hotels), stop the server
+and delete `backend/travel.db` — it will be recreated and reseeded on
+next startup.
+
+### Running the backend tests
+
+```bash
+cd backend
+source .venv/bin/activate
+python -m unittest discover -s tests -p "test_*.py"
+```
+
+All mutation tests (saved-hotels CRUD, the chatbot's SQL validation and
+answer flow) run against a temporary SQLite file created per test — the
+suite never touches `backend/travel.db`. The chatbot tests mock the LLM
+call (`chat._call_openrouter`) rather than calling OpenRouter — no API
+quota is used by the test suite. `backend/tests/fixtures/chat_sample.json`
+is a labeled, fixed example of the full chat request/response flow that
+`tests/test_chat.py` replays as a golden-path check.
 
 ## Frontend setup
 
