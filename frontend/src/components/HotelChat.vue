@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 
 const API_BASE = 'http://127.0.0.1:8123'
 
-const LABEL_ORDER = ['Hotel', 'Location', 'Stay dates', 'Nightly rate', 'Total cost', 'Availability', 'Reason']
+const LABEL_ORDER = ['Hotel', 'Location', 'Stay', 'Nightly rate', 'Total cost', 'Availability', 'Reason']
 const SUGGESTIONS = [
   { label: 'Cheapest stay', question: "What's the cheapest stay among my saved hotels?" },
   { label: 'Rooms on Oct 10', question: 'How many rooms are available on 2026-10-10?' },
@@ -123,61 +123,73 @@ async function askQuestion() {
       {{ errorMessage }}
     </p>
 
-    <p v-else-if="result && (result.status === 'rejected' || result.status === 'error')" class="status-message status-error">
-      <svg class="status-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M12 3l10 18H2L12 3z" stroke-linejoin="round" />
-        <line x1="12" y1="9" x2="12" y2="14" />
-        <circle cx="12" cy="17.3" r="0.9" fill="currentColor" stroke="none" />
-      </svg>
-      {{ result.answer }}
-    </p>
+    <template v-else-if="result">
+      <p v-if="result.status === 'rejected' || result.status === 'error'" class="status-message status-error">
+        <svg class="status-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 3l10 18H2L12 3z" stroke-linejoin="round" />
+          <line x1="12" y1="9" x2="12" y2="14" />
+          <circle cx="12" cy="17.3" r="0.9" fill="currentColor" stroke="none" />
+        </svg>
+        {{ result.answer }}
+      </p>
 
-    <p v-else-if="result && result.status === 'no_match'" class="status-message status-empty">
-      <svg class="status-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="12" cy="12" r="9" />
-        <line x1="12" y1="11" x2="12" y2="16" />
-        <circle cx="12" cy="7.5" r="0.9" fill="currentColor" stroke="none" />
-      </svg>
-      {{ result.answer }}
-    </p>
+      <p
+        v-else-if="result.status === 'no_match' || result.status === 'insufficient_data' || result.status === 'unclear'"
+        class="status-message status-empty"
+      >
+        <svg class="status-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="9" />
+          <line x1="12" y1="11" x2="12" y2="16" />
+          <circle cx="12" cy="7.5" r="0.9" fill="currentColor" stroke="none" />
+        </svg>
+        {{ result.answer }}
+      </p>
 
-    <div v-else-if="result && result.status === 'answer'" class="answer-card">
-      <h4>Answer</h4>
+      <div v-else-if="result.status === 'answer'" class="answer-card">
+        <h4>Answer</h4>
 
-      <div v-if="parsedAnswer.fields.length" class="answer-fields">
-        <div v-for="field in parsedAnswer.fields" :key="field.label" class="answer-field">
-          <span class="answer-field-label">{{ field.label }}</span>
-          <span class="answer-field-value">{{ field.value }}</span>
+        <div v-if="parsedAnswer.fields.length" class="answer-fields">
+          <div v-for="field in parsedAnswer.fields" :key="field.label" class="answer-field">
+            <span class="answer-field-label">{{ field.label }}</span>
+            <span class="answer-field-value">{{ field.value }}</span>
+          </div>
         </div>
+        <p v-if="parsedAnswer.leftover" class="answer-leftover">{{ parsedAnswer.leftover }}</p>
+
+        <p class="answer-disclaimer">Rates and availability are simulated course data.</p>
       </div>
-      <p v-if="parsedAnswer.leftover" class="answer-leftover">{{ parsedAnswer.leftover }}</p>
 
-      <p class="answer-disclaimer">Rates and availability are simulated course data.</p>
+      <!-- Shown whenever SQL actually ran, regardless of status above —
+           including no_match, so you can see what was tried even when
+           it matched nothing. Sentinel-short-circuited statuses
+           (insufficient_data/unclear/read-only-refusal) never run SQL,
+           so proposed_sql is null and these stay hidden for them. -->
+      <template v-if="result.proposed_sql">
+        <details class="answer-expand">
+          <summary>View query</summary>
+          <pre class="answer-sql">{{ result.proposed_sql }}</pre>
+        </details>
 
-      <details class="answer-expand">
-        <summary>View query</summary>
-        <pre class="answer-sql">{{ result.proposed_sql }}</pre>
-      </details>
-
-      <details class="answer-expand">
-        <summary>View source records</summary>
-        <div v-if="result.rows.length" class="table-scroll">
-          <table class="records-table">
-            <thead>
-              <tr>
-                <th v-for="col in recordColumns" :key="col">{{ col }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(row, index) in result.rows" :key="index">
-                <td v-for="col in recordColumns" :key="col">{{ row[col] }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <p v-else class="empty-state">No records.</p>
-      </details>
-    </div>
+        <details class="answer-expand">
+          <summary>View source records</summary>
+          <div v-if="result.rows.length" class="table-scroll">
+            <table class="records-table">
+              <thead>
+                <tr>
+                  <th v-for="col in recordColumns" :key="col">{{ col }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, index) in result.rows" :key="index">
+                  <td v-for="col in recordColumns" :key="col">{{ row[col] }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p v-else class="empty-state">No records.</p>
+        </details>
+      </template>
+    </template>
   </section>
 </template>
 

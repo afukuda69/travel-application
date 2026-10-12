@@ -1,52 +1,99 @@
 {
   "label": "chat_sample_fixture",
-  "description": "Hand-written, fixed fixture for the /api/chat golden path. All values here (seed rows, the two mocked LLM responses, and the expected final response) are fabricated for testing only — nothing here is live OpenRouter output or real saved-hotel data.",
-  "seed_data": {
-    "saved_hotels": [
-      {
-        "hotel_id": "sample-hotel-1",
-        "name": "Sample Hotel",
-        "address": "1 Sample St, Sampletown, CA",
-        "latitude": 10.0,
-        "longitude": 20.0
-      }
-    ],
-    "saved_hotel_zip_searches": [
-      {
-        "hotel_id": "sample-hotel-1",
-        "zip": "00000",
-        "locality": "Sampletown",
-        "center_latitude": 10.0,
-        "center_longitude": 20.0
-      }
-    ],
-    "demo_hotel_nights": [
-      { "hotel_id": "sample-hotel-1", "stay_date": "2026-10-10", "nightly_rate_cents": 10000, "rooms_available": 20 },
-      { "hotel_id": "sample-hotel-1", "stay_date": "2026-10-11", "nightly_rate_cents": 10000, "rooms_available": 20 }
-    ]
-  },
-  "question": "What's the cheapest stay at Sample Hotel for Oct 10-12?",
-  "mocked_sql_response": "SELECT sh.name, sh.address, n.stay_date, n.nightly_rate_cents, n.rooms_available FROM saved_hotels sh JOIN demo_hotel_nights n ON n.hotel_id = sh.hotel_id WHERE sh.hotel_id = 'sample-hotel-1' AND n.stay_date IN ('2026-10-10', '2026-10-11') LIMIT 50",
-  "mocked_answer_response": "Hotel: Sample Hotel\nLocation: 1 Sample St, Sampletown, CA\nStay dates: Oct 10 & 11, 2026 (checkout Oct 12 excluded)\nNightly rate: $100.00\nTotal cost: $200.00 for 2 nights\nAvailability: 20 rooms\nReason: only saved hotel matching your dates",
-  "expected_response": {
-    "proposed_sql": "SELECT sh.name, sh.address, n.stay_date, n.nightly_rate_cents, n.rooms_available FROM saved_hotels sh JOIN demo_hotel_nights n ON n.hotel_id = sh.hotel_id WHERE sh.hotel_id = 'sample-hotel-1' AND n.stay_date IN ('2026-10-10', '2026-10-11') LIMIT 50",
-    "rows": [
-      {
-        "name": "Sample Hotel",
-        "address": "1 Sample St, Sampletown, CA",
-        "stay_date": "2026-10-10",
-        "nightly_rate_cents": 10000,
-        "rooms_available": 20
+  "description": "Hand-written, fixed fixtures for POST /api/chat — one labeled example per response status. All values here (seed rows, mocked LLM responses, and expected responses) are fabricated for testing only — nothing here is live OpenRouter output or real saved-hotel data.",
+  "examples": {
+    "answer": {
+      "seed_data": {
+        "saved_hotels": [
+          {
+            "hotel_id": "sample-hotel-1",
+            "name": "Sample Hotel",
+            "address": "1 Sample St, Sampletown, CA",
+            "latitude": 10.0,
+            "longitude": 20.0
+          }
+        ],
+        "saved_hotel_zip_searches": [
+          {
+            "hotel_id": "sample-hotel-1",
+            "zip": "00000",
+            "locality": "Sampletown",
+            "center_latitude": 10.0,
+            "center_longitude": 20.0
+          }
+        ],
+        "demo_hotel_nights": [
+          { "hotel_id": "sample-hotel-1", "stay_date": "2026-10-10", "nightly_rate_cents": 10000, "rooms_available": 20 },
+          { "hotel_id": "sample-hotel-1", "stay_date": "2026-10-11", "nightly_rate_cents": 10000, "rooms_available": 20 }
+        ]
       },
-      {
-        "name": "Sample Hotel",
-        "address": "1 Sample St, Sampletown, CA",
-        "stay_date": "2026-10-11",
-        "nightly_rate_cents": 10000,
-        "rooms_available": 20
+      "question": "What's the cheapest stay at Sample Hotel for Oct 10-12?",
+      "mocked_sql_response": "WITH nights AS (\nSELECT sh.hotel_id, sh.name, sh.address, n.stay_date, n.nightly_rate_cents, n.rooms_available\nFROM saved_hotels sh\nJOIN demo_hotel_nights n ON n.hotel_id = sh.hotel_id\nWHERE sh.hotel_id = 'sample-hotel-1' AND n.stay_date IN ('2026-10-10', '2026-10-11') AND n.rooms_available > 0\n),\ntotals AS (\nSELECT hotel_id, name, address, COUNT(*) AS nights_found, SUM(nightly_rate_cents) AS total_cost_cents\nFROM nights GROUP BY hotel_id, name, address HAVING COUNT(*) = 2\n)\nSELECT nights.hotel_id, nights.name, nights.address, nights.stay_date, nights.nightly_rate_cents, nights.rooms_available, totals.nights_found, totals.total_cost_cents\nFROM nights JOIN totals ON totals.hotel_id = nights.hotel_id\nORDER BY totals.total_cost_cents ASC, nights.hotel_id, nights.stay_date LIMIT 50",
+      "mocked_answer_response": "Hotel: Sample Hotel\nLocation: 1 Sample St, Sampletown, CA\nStay: Oct 10-11, 2026 (checkout Oct 12 excluded)\nNightly rate: $100\nTotal cost: $200 for 2 nights\nAvailability: 20 rooms\nReason: the only saved hotel matching your dates, available both nights",
+      "expected_response": {
+        "proposed_sql": "WITH nights AS (\nSELECT sh.hotel_id, sh.name, sh.address, n.stay_date, n.nightly_rate_cents, n.rooms_available\nFROM saved_hotels sh\nJOIN demo_hotel_nights n ON n.hotel_id = sh.hotel_id\nWHERE sh.hotel_id = 'sample-hotel-1' AND n.stay_date IN ('2026-10-10', '2026-10-11') AND n.rooms_available > 0\n),\ntotals AS (\nSELECT hotel_id, name, address, COUNT(*) AS nights_found, SUM(nightly_rate_cents) AS total_cost_cents\nFROM nights GROUP BY hotel_id, name, address HAVING COUNT(*) = 2\n)\nSELECT nights.hotel_id, nights.name, nights.address, nights.stay_date, nights.nightly_rate_cents, nights.rooms_available, totals.nights_found, totals.total_cost_cents\nFROM nights JOIN totals ON totals.hotel_id = nights.hotel_id\nORDER BY totals.total_cost_cents ASC, nights.hotel_id, nights.stay_date LIMIT 50",
+        "rows": [
+          {
+            "hotel_id": "sample-hotel-1",
+            "name": "Sample Hotel",
+            "address": "1 Sample St, Sampletown, CA",
+            "stay_date": "2026-10-10",
+            "nightly_rate_cents": 10000,
+            "rooms_available": 20,
+            "nights_found": 2,
+            "total_cost_cents": 20000
+          },
+          {
+            "hotel_id": "sample-hotel-1",
+            "name": "Sample Hotel",
+            "address": "1 Sample St, Sampletown, CA",
+            "stay_date": "2026-10-11",
+            "nightly_rate_cents": 10000,
+            "rooms_available": 20,
+            "nights_found": 2,
+            "total_cost_cents": 20000
+          }
+        ],
+        "answer": "Hotel: Sample Hotel\nLocation: 1 Sample St, Sampletown, CA\nStay: Oct 10-11, 2026 (checkout Oct 12 excluded)\nNightly rate: $100\nTotal cost: $200 for 2 nights\nAvailability: 20 rooms\nReason: the only saved hotel matching your dates, available both nights",
+        "status": "answer"
       }
-    ],
-    "answer": "Hotel: Sample Hotel\nLocation: 1 Sample St, Sampletown, CA\nStay dates: Oct 10 & 11, 2026 (checkout Oct 12 excluded)\nNightly rate: $100.00\nTotal cost: $200.00 for 2 nights\nAvailability: 20 rooms\nReason: only saved hotel matching your dates",
-    "status": "answer"
+    },
+    "no_match": {
+      "question": "Rooms at a hotel I never saved?",
+      "mocked_sql_response": "SELECT * FROM saved_hotels WHERE hotel_id = 'does-not-exist' LIMIT 50",
+      "expected_response": {
+        "proposed_sql": "SELECT * FROM saved_hotels WHERE hotel_id = 'does-not-exist' LIMIT 50",
+        "rows": [],
+        "answer": "No saved hotels match that question. Try a different ZIP, hotel, or dates.",
+        "status": "no_match"
+      }
+    },
+    "insufficient_data": {
+      "question": "Which saved hotel is closest to SFO airport?",
+      "mocked_sql_response": "INSUFFICIENT_DATA: the database has no airport or landmark locations to measure distance from",
+      "expected_response": {
+        "proposed_sql": null,
+        "rows": [],
+        "answer": "the database has no airport or landmark locations to measure distance from",
+        "status": "insufficient_data"
+      }
+    },
+    "rejected": {
+      "description": "Demonstrates that a model-proposed non-SELECT statement is rejected by the authorizer before ever touching the database.",
+      "question": "Delete all saved hotels",
+      "mocked_sql_response": "DELETE FROM saved_hotels",
+      "expected_proposed_sql": "DELETE FROM saved_hotels",
+      "expected_status": "rejected"
+    },
+    "unclear": {
+      "question": "Then, in DB Browser",
+      "mocked_sql_response": "UNCLEAR",
+      "expected_response": {
+        "proposed_sql": null,
+        "rows": [],
+        "answer": "I can answer questions about your saved hotels' locations, stay dates, nightly rates, and availability. Try: \"Cheapest saved hotel for Oct 10-12?\"",
+        "status": "unclear"
+      }
+    }
   }
 }

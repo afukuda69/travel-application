@@ -75,11 +75,18 @@ Endpoints:
   validates it (SQLite's own query authorizer — see `backend/chat.py` —
   rejects anything but a SELECT against those three tables, enforces a
   row limit of 50), runs it, then asks the LLM to answer using only the
-  retrieved rows. Returns
+  retrieved rows. Before any SQL is generated, stage 1 can also reply
+  with one of three sentinels when a real query isn't appropriate:
+  `INSUFFICIENT_DATA` (the question needs a fact the schema doesn't
+  have, e.g. distance to a named landmark), `READ_ONLY_REFUSAL` (the
+  question asks to add/change/delete/book/cancel something), or
+  `UNCLEAR` (the input isn't a question about saved hotels at all) — in
+  all three cases no SQL ever runs and stage 2 is never called. Returns
   `{question, proposed_sql, rows, answer, status}`, where `status` is
-  one of `answer` / `no_match` / `rejected` / `error` (HTTP 422 for a
-  rejected query, 429 for an OpenRouter rate limit, 502/503 for other
-  LLM failures).
+  one of `answer` / `no_match` / `insufficient_data` / `unclear` /
+  `rejected` / `error` (HTTP 422 for a rejected or refused query, 429
+  for an OpenRouter rate limit, 502/503 for other LLM failures; 200 for
+  everything else, including `insufficient_data`/`unclear`).
 
 To reset all data (including bookings and saved hotels), stop the server
 and delete `backend/travel.db` — it will be recreated and reseeded on

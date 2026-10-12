@@ -143,6 +143,51 @@ class ChatRouteTests(unittest.TestCase):
             resp = client.post("/api/chat", json={"question": ""})
         self.assertEqual(resp.status_code, 422)
 
+    @patch("chat._call_openrouter")
+    def test_insufficient_data_sentinel_returns_200_and_insufficient_data_status(self, mock_llm):
+        mock_llm.return_value = "INSUFFICIENT_DATA: no airport or landmark locations in the database"
+
+        with TestClient(main.app) as client:
+            resp = client.post("/api/chat", json={"question": "Which saved hotel is closest to SFO airport?"})
+
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["status"], "insufficient_data")
+        self.assertIsNone(body["proposed_sql"])
+        self.assertEqual(body["rows"], [])
+
+    @patch("chat._call_openrouter")
+    def test_read_only_refusal_sentinel_returns_422_rejected_and_db_unchanged(self, mock_llm):
+        self._seed()
+        mock_llm.return_value = "READ_ONLY_REFUSAL"
+
+        with TestClient(main.app) as client:
+            resp = client.post("/api/chat", json={"question": "Delete all saved hotels"})
+
+        self.assertEqual(resp.status_code, 422)
+        body = resp.json()
+        self.assertEqual(body["status"], "rejected")
+        self.assertIn("read-only", body["answer"].lower())
+        self.assertEqual(body["rows"], [])
+
+        conn = models.get_connection()
+        count = conn.execute("SELECT COUNT(*) FROM saved_hotels").fetchone()[0]
+        conn.close()
+        self.assertEqual(count, 1, "a refused delete request must not change the database")
+
+    @patch("chat._call_openrouter")
+    def test_unclear_sentinel_returns_200_and_unclear_status(self, mock_llm):
+        mock_llm.return_value = "UNCLEAR"
+
+        with TestClient(main.app) as client:
+            resp = client.post("/api/chat", json={"question": "Then, in DB Browser"})
+
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["status"], "unclear")
+        self.assertIsNone(body["proposed_sql"])
+        self.assertEqual(body["rows"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

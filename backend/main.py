@@ -176,6 +176,13 @@ def post_chat(payload: ChatRequest):
         return chat.answer_question(payload.question)
     except chat.SQLRejectedError as exc:
         return _chat_error(422, payload.question, f"Not allowed (read-only): {exc}", "rejected", exc.proposed_sql)
+    except chat.ReadOnlyRefusalError:
+        return _chat_error(
+            422,
+            payload.question,
+            "Not allowed: this assistant is read-only and cannot change saved hotels or make bookings.",
+            "rejected",
+        )
     except chat.LLMNotConfiguredError:
         return _chat_error(503, payload.question, "The chatbot isn't configured yet.", "error")
     except chat.LLMRateLimitedError:
