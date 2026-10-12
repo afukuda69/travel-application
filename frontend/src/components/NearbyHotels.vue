@@ -296,10 +296,10 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .card {
-  background: var(--bg-panel);
+  background: var(--bg-panel-translucent);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--card-shadow);
   padding: var(--space-4);
   margin-bottom: var(--space-4);
 }
@@ -319,7 +319,7 @@ onBeforeUnmount(() => {
 
 .zip-row {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   align-items: center;
   gap: var(--space-3);
   margin-bottom: var(--space-3);
@@ -387,22 +387,27 @@ onBeforeUnmount(() => {
 }
 
 .btn-primary {
-  background: var(--accent-button);
-  color: var(--text-primary);
+  /* 1.2rem (≈19.2px) + font-weight 700 qualifies as WCAG "large text",
+     which only needs 3:1 contrast — the gradient's lighter end (#9d5cff)
+     clears that but not the stricter 4.5:1 normal-text threshold. */
+  background: linear-gradient(135deg, var(--accent-button-start), var(--accent-button-end));
+  color: #ffffff;
   border: 1px solid transparent;
   border-radius: var(--radius);
   min-height: var(--min-target);
   padding: 0 var(--space-4);
-  font-size: 0.9rem;
-  font-weight: 600;
+  font-size: 1.2rem;
+  font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-  transition: background 0.15s ease;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
 }
 
-.btn-primary:hover:not(:disabled) {
-  background: var(--accent-button-hover);
+.btn-primary:hover:not(:disabled),
+.btn-primary:focus-visible:not(:disabled) {
+  box-shadow: var(--button-glow);
+  transform: translateY(-1px);
 }
 
 .btn-primary:disabled {
@@ -413,14 +418,15 @@ onBeforeUnmount(() => {
 .status-message {
   display: flex;
   align-items: center;
+  justify-content: center;
+  text-align: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius);
-  margin: 0;
+  margin: 0 auto;
   font-size: 0.85rem;
   font-weight: 500;
-  flex: 1;
-  min-width: 220px;
+  max-width: 480px;
 }
 
 .status-icon {
@@ -464,7 +470,7 @@ onBeforeUnmount(() => {
 }
 
 .status-summary strong {
-  color: var(--accent-secondary);
+  color: var(--accent-text);
 }
 
 .nearby-layout {
@@ -546,7 +552,7 @@ onBeforeUnmount(() => {
 
 .hotel-item-distance {
   font-size: 0.76rem;
-  color: var(--accent-secondary);
+  color: var(--accent-text);
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -605,7 +611,7 @@ onBeforeUnmount(() => {
   background: var(--bg-panel);
   color: var(--text-primary);
   border: 1px solid var(--border);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--card-shadow);
   border-radius: var(--radius);
 }
 
@@ -634,7 +640,7 @@ onBeforeUnmount(() => {
 }
 
 .hotel-map :deep(.leaflet-control-attribution a) {
-  color: var(--text-primary);
+  color: var(--accent-text);
 }
 
 .hotel-map :deep(.leaflet-control-zoom a) {

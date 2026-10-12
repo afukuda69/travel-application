@@ -1,4 +1,4 @@
-# Travel Application
+# StayAlessio
 
 A hotel/trip search and booking app: a FastAPI backend (SQLite-backed,
 MVC-structured) exposes search and booking CRUD, and a Vue 3 frontend
