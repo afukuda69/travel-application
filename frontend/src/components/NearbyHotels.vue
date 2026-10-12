@@ -14,6 +14,12 @@ const location = ref(null)
 const hotels = ref([])
 const radiusM = ref(0)
 const selectedPlaceId = ref(null)
+const resultSource = ref('') // 'local' | 'api'
+
+const savedHotelIds = ref(new Set())
+const pendingActionHotelId = ref(null)
+const actionFeedback = ref('')
+const actionFeedbackKind = ref('success') // 'success' | 'error'
 
 const mapContainer = ref(null)
 let map = null
@@ -34,6 +40,14 @@ function formatDistance(meters) {
     return `${(meters / 1000).toFixed(1)} km away`
   }
   return `${Math.round(meters)} m away`
+}
+
+function formatCents(cents) {
+  return `$${(cents / 100).toFixed(2)}`
+}
+
+function isSaved(hotel) {
+  return savedHotelIds.value.has(hotel.hotel_id)
 }
 
 function markerIcon(kind) {
@@ -80,24 +94,32 @@ function renderMap() {
 
   const bounds = []
 
-  centerMarker = L.marker([location.value.latitude, location.value.longitude], {
-    title: 'Search center',
-    icon: markerIcon('center'),
-  }).addTo(map)
-  centerMarker.bindPopup(
-    `ZIP ${location.value.postcode}${location.value.locality ? ` — ${location.value.locality}` : ''}`
-  )
-  bounds.push([location.value.latitude, location.value.longitude])
+  // Defensive: local results always carry a center (real or a
+  // hotel-centroid fallback computed by the backend), but guard anyway
+  // so a missing coordinate can never reach Leaflet as undefined.
+  const hasCenter = location.value.latitude != null && location.value.longitude != null
+  if (hasCenter) {
+    centerMarker = L.marker([location.value.latitude, location.value.longitude], {
+      title: 'Search center',
+      icon: markerIcon('center'),
+    }).addTo(map)
+    centerMarker.bindPopup(
+      `ZIP ${location.value.postcode}${location.value.locality ? ` — ${location.value.locality}` : ''}`
+    )
+    bounds.push([location.value.latitude, location.value.longitude])
+  }
 
   hotels.value.forEach((hotel) => {
     const marker = L.marker([hotel.latitude, hotel.longitude], { icon: markerIcon('hotel') }).addTo(map)
     marker.bindPopup(hotel.name || 'Unnamed hotel')
-    marker.on('click', () => selectFromMarker(hotel.place_id))
-    hotelMarkers.set(hotel.place_id, marker)
+    marker.on('click', () => selectFromMarker(hotel.hotel_id))
+    hotelMarkers.set(hotel.hotel_id, marker)
     bounds.push([hotel.latitude, hotel.longitude])
   })
 
-  map.fitBounds(bounds, { padding: [32, 32], maxZoom: 15 })
+  if (bounds.length > 0) {
+    map.fitBounds(bounds, { padding: [32, 32], maxZoom: 15 })
+  }
   updateMarkerSelection()
 }
 
@@ -121,12 +143,57 @@ async function selectFromMarker(placeId) {
   }
 }
 
+async function fetchLocalHotels(candidate) {
+  const url = new URL('/api/saved-hotels', API_BASE)
+  url.searchParams.set('zip', candidate)
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error('Could not check your saved hotels right now. Please try again later.')
+  }
+  return response.json()
+}
+
+async function fetchApiHotels(candidate) {
+  const url = new URL('/api/hotels/nearby', API_BASE)
+  url.searchParams.set('zip', candidate)
+  const response = await fetch(url)
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error("We couldn't find that ZIP code.")
+    }
+    if (response.status === 422) {
+      throw new Error('That ZIP code is not valid. Enter exactly 5 digits.')
+    }
+    if (response.status === 429) {
+      throw new Error('Too many requests right now. Please wait a moment and try again.')
+    }
+    if (response.status === 502 || response.status === 503) {
+      throw new Error('The hotel search service is unavailable right now. Please try again later.')
+    }
+    throw new Error(`Request failed with status ${response.status}`)
+  }
+  return response.json()
+}
+
+async function fetchSavedHotelIds() {
+  try {
+    const response = await fetch(new URL('/api/saved-hotels/ids', API_BASE))
+    if (!response.ok) return new Set()
+    return new Set(await response.json())
+  } catch (_err) {
+    return new Set()
+  }
+}
+
 async function searchHotels() {
   const candidate = zipInput.value.trim()
   zipInputError.value = ''
   statusError.value = ''
+  actionFeedback.value = ''
   location.value = null
   hotels.value = []
+  resultSource.value = ''
+  savedHotelIds.value = new Set()
   selectedPlaceId.value = null
   clearMapMarkers()
 
@@ -137,28 +204,35 @@ async function searchHotels() {
 
   loading.value = true
   try {
-    const url = new URL('/api/hotels/nearby', API_BASE)
-    url.searchParams.set('zip', candidate)
-    const response = await fetch(url)
-    if (!response.ok) {
-      if (response.status === 404) {
-        throw new Error("We couldn't find that ZIP code.")
+    // Local-first: check our own saved hotels before calling the
+    // Part 1 Geoapify-backed endpoint at all.
+    const localBody = await fetchLocalHotels(candidate)
+
+    if (localBody.hotels.length > 0) {
+      location.value = {
+        postcode: localBody.zip,
+        locality: localBody.locality,
+        latitude: localBody.latitude,
+        longitude: localBody.longitude,
       }
-      if (response.status === 422) {
-        throw new Error('That ZIP code is not valid. Enter exactly 5 digits.')
-      }
-      if (response.status === 429) {
-        throw new Error('Too many requests right now. Please wait a moment and try again.')
-      }
-      if (response.status === 502 || response.status === 503) {
-        throw new Error('The hotel search service is unavailable right now. Please try again later.')
-      }
-      throw new Error(`Request failed with status ${response.status}`)
+      hotels.value = localBody.hotels.map((hotel) => ({ ...hotel, distance_m: null }))
+      resultSource.value = 'local'
+      radiusM.value = 0
+      savedHotelIds.value = new Set(hotels.value.map((hotel) => hotel.hotel_id))
+      loading.value = false
+      await nextTick()
+      renderMap()
+      return
     }
-    const body = await response.json()
+
+    // No saved hotels for this ZIP — fall back to the live Part 1 search.
+    const body = await fetchApiHotels(candidate)
     location.value = body.location
-    hotels.value = body.hotels
+    hotels.value = body.hotels.map((hotel) => ({ ...hotel, hotel_id: hotel.place_id, nights: null }))
+    resultSource.value = 'api'
     radiusM.value = body.radius_m
+    savedHotelIds.value = await fetchSavedHotelIds()
+
     loading.value = false
     await nextTick()
     renderMap()
@@ -166,6 +240,85 @@ async function searchHotels() {
     statusError.value = err.message
   } finally {
     loading.value = false
+  }
+}
+
+async function addToLocal(hotel) {
+  pendingActionHotelId.value = hotel.hotel_id
+  actionFeedback.value = ''
+  try {
+    const response = await fetch(new URL('/api/saved-hotels', API_BASE), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        hotel_id: hotel.hotel_id,
+        name: hotel.name,
+        address: hotel.address,
+        latitude: hotel.latitude,
+        longitude: hotel.longitude,
+        zip: location.value?.postcode,
+        locality: location.value?.locality || null,
+        center_latitude: location.value?.latitude ?? null,
+        center_longitude: location.value?.longitude ?? null,
+      }),
+    })
+    if (!response.ok) {
+      throw new Error('Could not save this hotel. Please try again.')
+    }
+    const saved = await response.json()
+
+    const next = new Set(savedHotelIds.value)
+    next.add(hotel.hotel_id)
+    savedHotelIds.value = next
+
+    const target = hotels.value.find((h) => h.hotel_id === hotel.hotel_id)
+    if (target) target.nights = saved.nights
+
+    actionFeedback.value = `Saved ${hotel.name || 'this hotel'} to local storage.`
+    actionFeedbackKind.value = 'success'
+  } catch (err) {
+    actionFeedback.value = err.message
+    actionFeedbackKind.value = 'error'
+  } finally {
+    pendingActionHotelId.value = null
+  }
+}
+
+async function removeFromLocal(hotel) {
+  pendingActionHotelId.value = hotel.hotel_id
+  actionFeedback.value = ''
+  try {
+    const response = await fetch(new URL(`/api/saved-hotels/${encodeURIComponent(hotel.hotel_id)}`, API_BASE), {
+      method: 'DELETE',
+    })
+    if (!response.ok) {
+      throw new Error('Could not remove this hotel. Please try again.')
+    }
+
+    const next = new Set(savedHotelIds.value)
+    next.delete(hotel.hotel_id)
+    savedHotelIds.value = next
+
+    if (selectedPlaceId.value === hotel.hotel_id) {
+      selectedPlaceId.value = null
+    }
+
+    if (resultSource.value === 'local') {
+      hotels.value = hotels.value.filter((h) => h.hotel_id !== hotel.hotel_id)
+    } else {
+      const target = hotels.value.find((h) => h.hotel_id === hotel.hotel_id)
+      if (target) target.nights = null
+    }
+
+    actionFeedback.value = `Removed ${hotel.name || 'this hotel'} from local storage.`
+    actionFeedbackKind.value = 'success'
+    await nextTick()
+    renderMap()
+  } catch (err) {
+    actionFeedback.value = err.message
+    actionFeedbackKind.value = 'error'
+  } finally {
+    pendingActionHotelId.value = null
   }
 }
 
@@ -241,12 +394,30 @@ onBeforeUnmount(() => {
         {{ statusError }}
       </p>
       <p v-else-if="location" class="status-message status-summary">
-        Within {{ radiusM / 1000 }} km of
-        <strong>{{ location.postcode }}</strong>
-        <span v-if="location.locality">&nbsp;({{ location.locality }})</span>
-        — {{ hotels.length }} found.
+        <span class="source-badge" :class="resultSource === 'local' ? 'source-local' : 'source-api'">
+          {{ resultSource === 'local' ? 'Saved locally' : 'API results' }}
+        </span>
+        <span v-if="resultSource === 'api'">
+          Within {{ radiusM / 1000 }} km of
+          <strong>{{ location.postcode }}</strong>
+          <span v-if="location.locality">&nbsp;({{ location.locality }})</span>
+          — {{ hotels.length }} found.
+        </span>
+        <span v-else>
+          <strong>{{ location.postcode }}</strong>
+          <span v-if="location.locality">&nbsp;({{ location.locality }})</span>
+          — {{ hotels.length }} hotel(s) you've saved here (not a complete list of hotels in this area).
+        </span>
       </p>
     </div>
+
+    <p
+      v-if="actionFeedback"
+      class="status-message"
+      :class="actionFeedbackKind === 'error' ? 'status-error' : 'status-success'"
+    >
+      {{ actionFeedback }}
+    </p>
 
     <!--
       This stays mounted (v-show, not v-if) so the map container element
@@ -265,22 +436,52 @@ onBeforeUnmount(() => {
           No hotels found nearby.
         </p>
         <ul v-else class="hotel-list" role="list">
-          <li v-for="hotel in hotels" :key="hotel.place_id">
-            <button
-              type="button"
-              class="hotel-item"
-              :class="{ 'hotel-item-selected': hotel.place_id === selectedPlaceId }"
-              :ref="(el) => setListItemRef(hotel.place_id, el)"
-              @click="selectFromList(hotel.place_id)"
-            >
-              <span class="hotel-item-row1">
-                <span class="hotel-item-name">{{ hotel.name || 'Unnamed hotel' }}</span>
-                <span v-if="hotel.distance_m != null" class="hotel-item-distance">
-                  {{ formatDistance(hotel.distance_m) }}
+          <li v-for="hotel in hotels" :key="hotel.hotel_id">
+            <div class="hotel-item" :class="{ 'hotel-item-selected': hotel.hotel_id === selectedPlaceId }">
+              <button
+                type="button"
+                class="hotel-item-select"
+                :ref="(el) => setListItemRef(hotel.hotel_id, el)"
+                @click="selectFromList(hotel.hotel_id)"
+              >
+                <span class="hotel-item-row1">
+                  <span class="hotel-item-name">{{ hotel.name || 'Unnamed hotel' }}</span>
+                  <span v-if="hotel.distance_m != null" class="hotel-item-distance">
+                    {{ formatDistance(hotel.distance_m) }}
+                  </span>
                 </span>
-              </span>
-              <span v-if="hotel.address" class="hotel-item-address">{{ hotel.address }}</span>
-            </button>
+                <span v-if="hotel.address" class="hotel-item-address">{{ hotel.address }}</span>
+
+                <div v-if="hotel.nights && hotel.nights.length" class="hotel-item-nights">
+                  <span class="nights-label">Simulated classroom rates — not from the hotel API</span>
+                  <span v-for="night in hotel.nights" :key="night.stay_date" class="night-chip">
+                    {{ night.stay_date }}: {{ formatCents(night.nightly_rate_cents) }}/night
+                    · {{ night.rooms_available }} rooms
+                  </span>
+                </div>
+              </button>
+
+              <div class="hotel-item-actions">
+                <button
+                  v-if="!isSaved(hotel)"
+                  type="button"
+                  class="btn-pill primary"
+                  :disabled="pendingActionHotelId === hotel.hotel_id"
+                  @click="addToLocal(hotel)"
+                >
+                  {{ pendingActionHotelId === hotel.hotel_id ? 'Saving…' : 'Add to Local' }}
+                </button>
+                <button
+                  v-else
+                  type="button"
+                  class="btn-pill danger"
+                  :disabled="pendingActionHotelId === hotel.hotel_id"
+                  @click="removeFromLocal(hotel)"
+                >
+                  {{ pendingActionHotelId === hotel.hotel_id ? 'Removing…' : 'Remove from Local' }}
+                </button>
+              </div>
+            </div>
           </li>
         </ul>
       </div>
@@ -288,8 +489,12 @@ onBeforeUnmount(() => {
       <div ref="mapContainer" class="hotel-map" role="application" aria-label="Map of nearby hotels"></div>
     </div>
 
-    <p v-if="location" class="data-note">
+    <p v-if="location && resultSource === 'api'" class="data-note">
       Hotel data comes from Geoapify, may be incomplete, and is not live bookable availability.
+    </p>
+    <p v-else-if="location && resultSource === 'local'" class="data-note">
+      Showing hotels you've saved for this ZIP. Rates and availability are simulated classroom data, not live
+      bookable information.
     </p>
   </section>
 </template>
@@ -467,10 +672,40 @@ onBeforeUnmount(() => {
   color: var(--text-primary);
   background: var(--bg-raised);
   border: 1px solid var(--border);
+  flex-wrap: wrap;
 }
 
 .status-summary strong {
   color: var(--accent-text);
+}
+
+.status-success {
+  color: var(--color-success);
+  background: rgba(74, 222, 128, 0.1);
+  border: 1px solid rgba(74, 222, 128, 0.3);
+}
+
+.source-badge {
+  display: inline-flex;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.source-local {
+  background: rgba(74, 222, 128, 0.14);
+  color: var(--color-success);
+  border: 1px solid rgba(74, 222, 128, 0.35);
+}
+
+.source-api {
+  background: rgba(96, 165, 250, 0.14);
+  color: var(--accent-secondary);
+  border: 1px solid rgba(96, 165, 250, 0.35);
 }
 
 .nearby-layout {
@@ -497,20 +732,11 @@ onBeforeUnmount(() => {
 
 .hotel-item {
   width: 100%;
-  min-height: var(--min-target);
-  text-align: left;
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 2px;
-  padding: var(--space-2) var(--space-3);
-  border: none;
+  align-items: stretch;
+  gap: var(--space-2);
   border-left: 3px solid transparent;
   border-bottom: 1px solid var(--border);
-  background: transparent;
-  cursor: pointer;
-  font: inherit;
-  color: var(--text-primary);
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 
@@ -525,6 +751,23 @@ onBeforeUnmount(() => {
 .hotel-item-selected {
   background: rgba(139, 92, 246, 0.1);
   border-left-color: var(--accent);
+}
+
+.hotel-item-select {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--min-target);
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  color: var(--text-primary);
 }
 
 .hotel-item-row1 {
@@ -555,6 +798,73 @@ onBeforeUnmount(() => {
   color: var(--accent-text);
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+.hotel-item-nights {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
+  border-top: 1px dashed var(--border);
+}
+
+.nights-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-warning);
+  font-weight: 700;
+}
+
+.night-chip {
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+}
+
+.hotel-item-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: var(--space-2);
+}
+
+.btn-pill {
+  border-radius: var(--radius-sm);
+  min-height: 34px;
+  padding: 0 var(--space-3);
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: transparent;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.btn-pill.primary {
+  color: var(--accent-text);
+  border-color: rgba(139, 92, 246, 0.4);
+}
+
+.btn-pill.primary:hover:not(:disabled) {
+  background: rgba(139, 92, 246, 0.12);
+}
+
+.btn-pill.danger {
+  color: var(--color-danger);
+  border-color: rgba(248, 113, 113, 0.35);
+}
+
+.btn-pill.danger:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.1);
+  border-color: rgba(248, 113, 113, 0.6);
+}
+
+.btn-pill:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .hotel-map {

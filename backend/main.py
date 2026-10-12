@@ -3,11 +3,12 @@ from dataclasses import asdict
 
 from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import config
 import controller
 import places_lookup
+import saved_hotels
 import zip_lookup
 from models import init_db
 
@@ -44,6 +45,18 @@ def on_startup():
 class BookingCreate(BaseModel):
     trip_id: str
     user_id: int
+
+
+class SavedHotelCreate(BaseModel):
+    hotel_id: str
+    name: str | None = None
+    address: str | None = None
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    zip: str
+    locality: str | None = None
+    center_latitude: float | None = Field(default=None, ge=-90, le=90)
+    center_longitude: float | None = Field(default=None, ge=-180, le=180)
 
 
 @app.get("/api/health")
@@ -100,6 +113,42 @@ def hotels_nearby(zip_code: str = Query("", alias="zip")):
         "hotels": [asdict(hotel) for hotel in hotels],
         "radius_m": places_lookup.SEARCH_RADIUS_METERS,
     }
+
+
+@app.get("/api/saved-hotels/ids")
+def get_saved_hotel_ids():
+    return saved_hotels.list_saved_hotel_ids()
+
+
+@app.get("/api/saved-hotels")
+def get_saved_hotels(zip_code: str = Query("", alias="zip")):
+    _require_valid_zip(zip_code)
+    return saved_hotels.list_saved_hotels_for_zip(zip_code)
+
+
+@app.post("/api/saved-hotels", status_code=201)
+def post_saved_hotel(payload: SavedHotelCreate):
+    _require_valid_zip(payload.zip)
+    return saved_hotels.save_hotel(
+        hotel_id=payload.hotel_id,
+        name=payload.name,
+        address=payload.address,
+        latitude=payload.latitude,
+        longitude=payload.longitude,
+        zip_code=payload.zip,
+        locality=payload.locality,
+        center_latitude=payload.center_latitude,
+        center_longitude=payload.center_longitude,
+    )
+
+
+@app.delete("/api/saved-hotels/{hotel_id}", status_code=204)
+def delete_saved_hotel(hotel_id: str):
+    try:
+        saved_hotels.delete_saved_hotel(hotel_id)
+    except saved_hotels.HotelNotSavedError:
+        raise HTTPException(status_code=404, detail="Hotel is not saved")
+    return Response(status_code=204)
 
 
 @app.get("/search")

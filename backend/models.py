@@ -57,6 +57,22 @@ CREATE TABLE IF NOT EXISTS demo_hotel_nights (
     rooms_available INTEGER NOT NULL DEFAULT 20 CHECK (rooms_available >= 0),
     PRIMARY KEY (hotel_id, stay_date)
 );
+
+-- Which ZIP search(es) a saved hotel was found under, so a local-first
+-- ZIP lookup can retrieve it without re-calling Geoapify. A hotel can be
+-- associated with more than one ZIP over time; re-saving under the same
+-- ZIP must not duplicate this row (composite primary key).
+-- center_latitude/center_longitude are the resolved ZIP's own coordinates
+-- (what the map centers on) — nullable because they were added after this
+-- table first shipped; see _migrate_schema for existing databases.
+CREATE TABLE IF NOT EXISTS saved_hotel_zip_searches (
+    hotel_id TEXT NOT NULL REFERENCES saved_hotels(hotel_id),
+    zip TEXT NOT NULL CHECK (zip GLOB '[0-9][0-9][0-9][0-9][0-9]'),
+    locality TEXT,
+    center_latitude REAL CHECK (center_latitude BETWEEN -90 AND 90),
+    center_longitude REAL CHECK (center_longitude BETWEEN -180 AND 180),
+    PRIMARY KEY (hotel_id, zip)
+);
 """
 
 
@@ -163,6 +179,25 @@ class DemoHotelNight:
         )
 
 
+@dataclass
+class SavedHotelZipSearch:
+    hotel_id: str
+    zip: str
+    locality: str | None
+    center_latitude: float | None
+    center_longitude: float | None
+
+    @classmethod
+    def from_row(cls, row):
+        return cls(
+            hotel_id=row["hotel_id"],
+            zip=row["zip"],
+            locality=row["locality"],
+            center_latitude=row["center_latitude"],
+            center_longitude=row["center_longitude"],
+        )
+
+
 def get_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -175,9 +210,33 @@ def init_db():
     try:
         conn.executescript(SCHEMA)
         conn.commit()
+        _migrate_schema(conn)
         _seed_if_empty(conn)
     finally:
         conn.close()
+
+
+def _column_names(conn, table: str) -> set[str]:
+    return {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+
+
+def _migrate_schema(conn):
+    """Additive, repeatable column migrations for tables that already
+    existed before a column was added. CREATE TABLE IF NOT EXISTS (above)
+    only helps on a fresh database — an existing table is left as-is, so
+    new nullable columns have to be added explicitly, and only once."""
+    columns = _column_names(conn, "saved_hotel_zip_searches")
+    if "center_latitude" not in columns:
+        conn.execute(
+            "ALTER TABLE saved_hotel_zip_searches "
+            "ADD COLUMN center_latitude REAL CHECK (center_latitude BETWEEN -90 AND 90)"
+        )
+    if "center_longitude" not in columns:
+        conn.execute(
+            "ALTER TABLE saved_hotel_zip_searches "
+            "ADD COLUMN center_longitude REAL CHECK (center_longitude BETWEEN -180 AND 180)"
+        )
+    conn.commit()
 
 
 def _seed_if_empty(conn):
